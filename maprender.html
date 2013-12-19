@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta name="viewport" content="initial-scale=1.0, user-scalable=no"/>
+        <style type="text/css">
+            html {height: 100%}
+            body {height: 100%; margin: 0; padding: 0}
+            #map-canvas {height: 0%}
+        </style>
+        <script type="text/javascript" 
+            src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAKjEjRVTcRX1N-bP_ynDN8MDppBs7iB04&sensor=false">
+        </script>
+        <script type="text/javascript">
+            customMapCanvas = null;
+            CanvasOverlay.prototype = new google.maps.OverlayView();
+            mapSize = {width:800, height: 600};
+
+            startingPoint = new google.maps.LatLng(43.070894, -89.395065);
+            southWest = [42.970492, -89.53337];
+            northEast = [43.158361, -89.243317];
+            locations = null;
+
+            color = { red: 0, green: 0, blue: 255, alpha: 10};
+
+            //southWest = [62.281829, -150.287132];
+            //northEast = [62.400471, -150.005608];
+            function createLocations(sw, ne) {
+                var numLocations = 25000;
+                var locations = [];
+                for (var i = 0; i < numLocations; i++) {
+                    var lat = sw[0] + (Math.random() * (ne[0] - sw[0]));
+                    var lon = sw[1] + (Math.random() * (ne[1] - sw[1]));
+                    locations[i] = new google.maps.LatLng(lat, lon);
+                }
+                return locations;
+            }
+            function CanvasOverlay(map) {
+                this.canvas = document.createElement("canvas");
+                this.canvas.className = "GMAPS_OVERLAY";
+                this.canvas.height = mapSize.height;
+                this.canvas.width = mapSize.width;
+                this.ctx = null;
+                this.map = map;
+                this.setMap(map);
+                this.densityBuffer = new Uint8Array(this.canvas.width*this.canvas.height);
+            }
+            CanvasOverlay.prototype.onAdd = function() {
+                locations = createLocations(southWest, northEast);
+                this.ctx = this.canvas.getContext("2d");
+                this.imageData = this.ctx.createImageData(this.canvas.width, this.canvas.height);
+                this.draw();
+
+                var panes = this.getPanes();
+                panes.overlayLayer.appendChild(this.canvas);
+            };
+            CanvasOverlay.prototype.draw = function() {
+                var projection = this.getProjection();
+                var centerPoint = projection.fromLatLngToDivPixel(this.map.getCenter());
+                this.canvas.style.left = (centerPoint.x - mapSize.width / 2) + "px";
+                this.canvas.style.top = (centerPoint.y - mapSize.height / 2) + "px";
+
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.imageData = this.ctx.createImageData(this.canvas.width, this.canvas.height);
+
+                this.densityBuffer = new Uint8Array(this.canvas.width*this.canvas.height);
+
+                for (var i = 0; i <= locations.length; i++) {
+                    var px = projection.fromLatLngToDivPixel(locations[i]);    
+                    if (px && px.x && px.y) {
+                        var x = Math.round(px.x);
+                        var y = Math.round(px.y);
+
+                        var densityIndex = y*x + x;
+                        this.densityBuffer[densityIndex] += 10;
+                        this.densityBuffer[densityIndex-1] += 3;
+                        this.densityBuffer[densityIndex+1] += 3;
+                        this.densityBuffer[densityIndex+this.canvas.width] += 3;
+                        this.densityBuffer[densityIndex-this.canvas.width] += 3;
+                        this.densityBuffer[densityIndex+this.canvas.width-1] += 3;
+                        this.densityBuffer[densityIndex+this.canvas.width+1] += 3;
+                        this.densityBuffer[densityIndex-this.canvas.width+1] += 3;
+                        this.densityBuffer[densityIndex-this.canvas.width-1] += 3;
+                    }
+                }
+
+                for (var i = 0; i < this.densityBuffer.length; i++) {
+                    if (this.densityBuffer[i] > 0) {
+                        var pixelIndex = 4 * i;
+
+                        this.imageData.data[pixelIndex] = color.red;
+                        this.imageData.data[pixelIndex+1] = color.green;
+                        this.imageData.data[pixelIndex+2] = color.blue;
+                        this.imageData.data[pixelIndex+3] += this.densityBuffer[i] * 2 * map.zoom;
+                    }
+                }
+
+                this.ctx.putImageData(this.imageData, 0, 0);
+            };
+            function initialize() {
+                var mapOptions = {
+                    center: startingPoint,
+                    zoom: 8
+                };
+                var mapEl = document.getElementById("map-canvas");
+                mapEl.style.height = mapSize.height + "px";
+                mapEl.style.width = mapSize.width + "px";
+                map = new google.maps.Map(document.getElementById("map-canvas"), mapOptions);
+
+                customMapCanvas = new CanvasOverlay(map);
+                google.maps.event.addListener(map, "dragend", function() {
+                    customMapCanvas.draw();
+                });
+
+                map.setZoom(12);
+            }
+            google.maps.event.addDomListener(window, 'load', initialize);
+        </script>
+    </head>
+    <body>
+        <div id="map-canvas"/>
+        <canvas id="render-canvas" width="800" height="600">
+    </body>
+</html>
